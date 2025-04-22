@@ -1,64 +1,94 @@
 ---
-apiVersion: v1
-kind: Service
-metadata:
-  name: wordpress-mysql
-  labels:
-    app: wordpress
-    tier: mysql
-spec:
-  ports:
-    - port: 3306
-  ##
-  # Create service selector labels here
-  ##
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: wordpress-mysql
-data:
-  ##
-  # create non-sensative data attributes
-  ##
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: wordpress-mysql
-  labels:
-    app: wordpress
-    tier: mysql
-spec:
-  ##
-  # Create app label selectors here
-  ##
-  template:
-    ##
-    # Create metadata labels here
-    ##
-    spec:
-      containers:
-      - image: mysql:8.0
-        name: mysql
-        env:
-        ##
-        # mount non-sensitive environment vars from configmap
-        # MYSQL_DATABASE | MYSQL_USER
-        ##
+ apiVersion: v1
+ kind: Service
+ metadata:
+   name: wordpress-mysql
+   labels:
+     app: wordpress
+     tier: mysql
+ spec:
+   ports:
+     - port: 3306
+   selector:
+     app: wordpress
+     tier: mysql
 
-        ##
-        # mount sensitive environment vars from secret
-        # MYSQL_ROOT_PASSWORD | MYSQL_PASSWORD
-        ##
-        ports:
-        - containerPort: 3306
-          name: mysql
-      ##
-      # define volume mounts here, be sure to reference
-      # the PVC in your container spec
-      ##
----
-##
-# Create persistent volume claim here
-##
+ ---
+ apiVersion: v1
+ kind: ConfigMap
+ metadata:
+   name: wordpress-mysql
+ data:
+   database: 'wordpress'
+   user: 'wordpress'
+
+ ---
+ apiVersion: apps/v1
+ kind: Deployment
+ metadata:
+   name: wordpress-mysql
+   labels:
+     app: wordpress
+     tier: mysql
+ spec:
+   selector:
+       matchLabels:
+         app: wordpress
+         tier: mysql
+
+   template:
+     metadata:
+         labels:
+           app: wordpress
+           tier: mysql
+
+     spec:
+       containers:
+       - image: mysql:8.0
+         name: mysql
+         env:
+         - name: MYSQL_DATABASE
+           valueFrom:
+             configMapKeyRef:
+               name: wordpress-mysql
+               key: database
+         - name: MYSQL_USER
+           valueFrom:
+             configMapKeyRef:
+               name: wordpress-mysql
+               key: user
+         - name: MYSQL_ROOT_PASSWORD
+           valueFrom:
+             secretKeyRef:
+               name: database
+               key: root-password
+         - name: MYSQL_PASSWORD
+           valueFrom:
+             secretKeyRef:
+               name: database
+               key: user-password
+
+         ports:
+         - containerPort: 3306
+           name: mysql
+
+       volumeMounts:
+         - name: mysql-persistent-storage
+           mountPath: /var/lib/mysql
+       volumes:
+       - name: mysql-persistent-storage
+         persistentVolumeClaim:
+           claimName: mysql-pv-claim
+
+ apiVersion: v1
+ kind: PersistentVolumeClaim
+ metadata:
+   name: mysql-pv-claim
+   labels:
+     app: wordpress
+ spec:
+   accessModes:
+     - ReadWriteOnce
+   resources:
+     requests:
+       storage: 1Gi
